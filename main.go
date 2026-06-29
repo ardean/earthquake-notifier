@@ -123,10 +123,19 @@ func runEarthquakeCheck(
 	log.Printf("check: found %d events", len(events))
 
 	notifications := tracker.Evaluate(events, cfg.Watch, cfg.MinMagnitude)
-	for _, n := range notifications {
-		msg := alert.FormatNotification(n, cfg.Watch)
-		log.Printf("check: notifying for event %s M%.1f", n.Event.ID, n.Event.Magnitude)
-		notifier.SendAsync(msg)
+	if len(notifications) > 0 {
+		log.Printf("check: notifying for %d event(s)", len(notifications))
+		for _, n := range notifications {
+			log.Printf("check:   %s M%.1f", n.Event.ID, n.Event.Magnitude)
+		}
+
+		budget := notify.DiscordMessageLimit - len(cfg.Hostname) - 3
+		if budget < 500 {
+			budget = 500
+		}
+		for _, msg := range alert.FormatNotifications(notifications, cfg.Watch, budget) {
+			notifier.Send(msg)
+		}
 	}
 
 	tracker.Prune(now.Add(-30 * 24 * time.Hour))

@@ -2,6 +2,7 @@ package alert
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -85,6 +86,122 @@ func (t *Tracker) Prune(olderThan time.Time) {
 			delete(t.seen, id)
 		}
 	}
+}
+
+const notificationSeparator = "\n\n"
+
+func FormatNotifications(notifications []Notification, watch config.WatchArea, maxLen int) []string {
+	if len(notifications) == 0 {
+		return nil
+	}
+	if len(notifications) == 1 {
+		return []string{FormatNotification(notifications[0], watch)}
+	}
+	if maxLen <= 0 {
+		maxLen = 1900
+	}
+
+	sorted := append([]Notification(nil), notifications...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Event.Magnitude > sorted[j].Event.Magnitude
+	})
+
+	newCount, updatedCount := 0, 0
+	for _, n := range sorted {
+		if n.Updated {
+			updatedCount++
+		} else {
+			newCount++
+		}
+	}
+
+	var messages []string
+	var buf strings.Builder
+	remainingNew, remainingUpdated := newCount, updatedCount
+	continued := false
+
+	flush := func() {
+		if buf.Len() == 0 {
+			return
+		}
+		messages = append(messages, buf.String())
+		buf.Reset()
+		continued = true
+	}
+
+	for _, n := range sorted {
+		block := formatEventCompact(n, watch)
+
+		if buf.Len() == 0 {
+			header := formatBatchHeader(remainingNew, remainingUpdated, watch, continued)
+			buf.WriteString(header)
+			buf.WriteString("\n\n")
+			buf.WriteString(block)
+		} else if buf.Len()+len(notificationSeparator)+len(block) > maxLen {
+			flush()
+			header := formatBatchHeader(remainingNew, remainingUpdated, watch, continued)
+			buf.WriteString(header)
+			buf.WriteString("\n\n")
+			buf.WriteString(block)
+		} else {
+			buf.WriteString(notificationSeparator)
+			buf.WriteString(block)
+		}
+
+		if n.Updated {
+			remainingUpdated--
+		} else {
+			remainingNew--
+		}
+	}
+
+	flush()
+	return messages
+}
+
+func formatBatchHeader(newCount, updatedCount int, watch config.WatchArea, continued bool) string {
+	var b strings.Builder
+	if continued {
+		b.WriteString("(continued)\n")
+	}
+
+	switch {
+	case newCount > 0 && updatedCount > 0:
+		fmt.Fprintf(&b, "🌍 %d earthquakes detected, %d magnitude updates", newCount, updatedCount)
+	case updatedCount > 0:
+		fmt.Fprintf(&b, "⚠️ %d earthquake magnitude updates", updatedCount)
+	default:
+		fmt.Fprintf(&b, "🌍 %d earthquakes detected", newCount)
+	}
+
+	if watch.Configured() {
+		fmt.Fprintf(&b, " (within %.0f km)", watch.RadiusKm)
+	}
+
+	return b.String()
+}
+
+func formatEventCompact(n Notification, watch config.WatchArea) string {
+	event := n.Event
+	var b strings.Builder
+
+	if n.Updated {
+		fmt.Fprintf(&b, "⚠️ M%.1f %s\n", event.Magnitude, event.Place)
+	} else {
+		fmt.Fprintf(&b, "M%.1f %s\n", event.Magnitude, event.Place)
+	}
+
+	fmt.Fprintf(&b, "%s UTC", event.Time.Format("2006-01-02 15:04:05"))
+	if watch.Configured() {
+		dist := filter.HaversineKm(watch.Latitude, watch.Longitude, event.Latitude, event.Longitude)
+		fmt.Fprintf(&b, " — %.0f km away", dist)
+	}
+
+	if event.URL != "" {
+		fmt.Fprintf(&b, "\n%s", event.URL)
+	}
+
+	return b.String()
 }
 
 func FormatNotification(n Notification, watch config.WatchArea) string {
