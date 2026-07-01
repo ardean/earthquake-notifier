@@ -14,6 +14,7 @@ type Config struct {
 	Webhook               WebhookConfig
 	Watch                 WatchArea
 	MinMagnitude          float64
+	MaxEventAge           time.Duration
 	CheckInterval         time.Duration
 	Lookback              time.Duration
 	NotifyStartupShutdown bool
@@ -46,6 +47,7 @@ func Load() Config {
 		NotifyMethods:         methods,
 		Watch:                 loadWatchArea(),
 		MinMagnitude:          loadFloat("MIN_MAGNITUDE", 3.0),
+		MaxEventAge:           loadDuration("MAX_EVENT_AGE", 7*24*time.Hour),
 		CheckInterval:         loadDuration("CHECK_INTERVAL", 2*time.Minute),
 		Lookback:              loadDuration("LOOKBACK", 24*time.Hour),
 		NotifyStartupShutdown: loadBool("NOTIFY_STARTUP_SHUTDOWN", true),

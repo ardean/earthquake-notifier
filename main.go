@@ -73,9 +73,9 @@ func run() string {
 
 	started = true
 	log.Printf("notifications enabled: %s", notify.FormatMethods(notifier.Methods()))
-	log.Printf("watching earthquakes within %.0f km of %.4f, %.4f (M%.1f+), every %s",
+	log.Printf("watching earthquakes within %.0f km of %.4f, %.4f (M%.1f+, max age %s), every %s",
 		cfg.Watch.RadiusKm, cfg.Watch.Latitude, cfg.Watch.Longitude,
-		cfg.MinMagnitude, format.Duration(cfg.CheckInterval))
+		cfg.MinMagnitude, format.Duration(cfg.MaxEventAge), format.Duration(cfg.CheckInterval))
 
 	notifyLifecycle(notifier, cfg, formatStartupMessage(cfg))
 	runCheck()
@@ -122,7 +122,7 @@ func runEarthquakeCheck(
 
 	log.Printf("check: found %d events", len(events))
 
-	notifications := tracker.Evaluate(events, cfg.Watch, cfg.MinMagnitude)
+	notifications := tracker.Evaluate(events, cfg.Watch, cfg.MinMagnitude, cfg.MaxEventAge, now)
 	if len(notifications) > 0 {
 		log.Printf("check: notifying for %d event(s)", len(notifications))
 		for _, n := range notifications {

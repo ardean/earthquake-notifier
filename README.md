@@ -9,6 +9,7 @@ Polls the [USGS Earthquake API](https://earthquake.usgs.gov/fdsnws/event/1/) and
 - Multiple notification backends: Discord, generic webhook, or log-only
 - Deduplication with persistent state (no repeat alerts for the same event)
 - Re-notifies when magnitude changes by 0.2 or more
+- Ignores events older than `MAX_EVENT_AGE` (including USGS edits to old records)
 - Batches multiple events from one check into a single message
 - Docker image published to GHCR on push to `main`
 
@@ -58,6 +59,7 @@ All settings are read from environment variables. See `.env.example` for a templ
 | `WATCH_LONGITUDE` | Yes | — | Watch point longitude (-180 to 180) |
 | `WATCH_RADIUS_KM` | Yes | — | Alert radius in kilometres |
 | `MIN_MAGNITUDE` | No | `3.0` | Minimum magnitude to alert on |
+| `MAX_EVENT_AGE` | No | `7d` | Skip notifications for events whose occurrence time is older than this (`0` disables) |
 | `CHECK_INTERVAL` | No | `2m` | How often to poll USGS (Go duration, e.g. `30s`, `5m`) |
 | `LOOKBACK` | No | `24h` | On first run, how far back to fetch events |
 | `NOTIFY_STARTUP_SHUTDOWN` | No | `true` | Send messages when the watcher starts/stops |
@@ -74,7 +76,7 @@ All settings are read from environment variables. See `.env.example` for a templ
 
 ## How it works
 
-On each check, the app fetches earthquakes updated since the previous check (or since `LOOKBACK` ago on the first run). Events within the watch radius and above `MIN_MAGNITUDE` that haven't been seen before trigger a notification. If USGS revises the magnitude by 0.2 or more, a follow-up alert is sent.
+On each check, the app fetches earthquakes updated since the previous check (or since `LOOKBACK` ago on the first run). Events within the watch radius and above `MIN_MAGNITUDE` whose occurrence time is within `MAX_EVENT_AGE` trigger a notification when first seen. If USGS revises the magnitude by 0.2 or more, a follow-up alert is sent (also subject to `MAX_EVENT_AGE`). Older events are still tracked so repeated edits do not keep surfacing.
 
 Multiple events from the same check are combined into one message (sorted by magnitude, largest first). Very long lists are split across messages to stay within Discord's 2000-character limit.
 

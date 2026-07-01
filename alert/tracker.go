@@ -39,7 +39,7 @@ type Notification struct {
 	Updated bool
 }
 
-func (t *Tracker) Evaluate(events []fetcher.Event, watch config.WatchArea, minMag float64) []Notification {
+func (t *Tracker) Evaluate(events []fetcher.Event, watch config.WatchArea, minMag float64, maxEventAge time.Duration, now time.Time) []Notification {
 	var out []Notification
 
 	for _, event := range events {
@@ -50,26 +50,39 @@ func (t *Tracker) Evaluate(events []fetcher.Event, watch config.WatchArea, minMa
 			continue
 		}
 
+		tooOld := eventTooOld(event, maxEventAge, now)
+
 		prev, exists := t.seen[event.ID]
 		if !exists {
-			out = append(out, Notification{Event: event})
 			t.seen[event.ID] = SeenEvent{
 				ID:        event.ID,
 				Magnitude: event.Magnitude,
-				Notified:  time.Now().UTC(),
+				Notified:  now,
+			}
+			if !tooOld {
+				out = append(out, Notification{Event: event})
 			}
 			continue
 		}
 
 		if abs(event.Magnitude-prev.Magnitude) >= magnitudeUpdateThreshold {
-			out = append(out, Notification{Event: event, Updated: true})
 			prev.Magnitude = event.Magnitude
-			prev.Notified = time.Now().UTC()
+			if !tooOld {
+				out = append(out, Notification{Event: event, Updated: true})
+				prev.Notified = now
+			}
 			t.seen[event.ID] = prev
 		}
 	}
 
 	return out
+}
+
+func eventTooOld(event fetcher.Event, maxAge time.Duration, now time.Time) bool {
+	if maxAge <= 0 {
+		return false
+	}
+	return now.Sub(event.Time) > maxAge
 }
 
 func (t *Tracker) Snapshot() []SeenEvent {
